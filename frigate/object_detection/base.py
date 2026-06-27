@@ -5,7 +5,7 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from collections import deque
-from multiprocessing import Queue, Value
+from multiprocessing import Event, Queue, Value
 from multiprocessing.synchronize import Event as MpEvent
 from typing import Any
 
@@ -121,6 +121,7 @@ class DetectorRunner(FrigateProcess):
         config: FrigateConfig,
         detector_config: BaseDetectorConfig,
         stop_event: MpEvent,
+        detector_stop_event: MpEvent,
     ) -> None:
         super().__init__(stop_event, PROCESS_PRIORITY_HIGH, name=name, daemon=True)
         self.detection_queue = detection_queue
@@ -129,6 +130,7 @@ class DetectorRunner(FrigateProcess):
         self.start_time = start_time
         self.config = config
         self.detector_config = detector_config
+        self.detector_stop_event = detector_stop_event
         self.outputs: dict[str, Any] = {}
 
     def create_output_shm(self, name: str) -> None:
@@ -146,7 +148,7 @@ class DetectorRunner(FrigateProcess):
         for name in self.cameras:
             self.create_output_shm(name)
 
-        while not self.stop_event.is_set():
+        while not self.stop_event.is_set() and not self.detector_stop_event.is_set():
             try:
                 connection_id = self.detection_queue.get(timeout=1)
             except queue.Empty:
@@ -334,6 +336,7 @@ class ObjectDetectProcess:
         self.config = config
         self.detector_config = detector_config
         self.stop_event = stop_event
+        self.detector_stop_event = Event()
         self.start_or_restart()
 
     def stop(self) -> None:
@@ -344,8 +347,9 @@ class ObjectDetectProcess:
         if self.detect_process is None:
             return
 
-        logging.info("Waiting for detection process to exit gracefully...")
-        self.detect_process.join(timeout=30)
+        logging.info("Asking detection process to stop gracefully...")
+        self.detector_stop_event.set()
+        self.detect_process.join(timeout=5)
         if self.detect_process.exitcode is None:
             logging.info("Detection process didn't exit. Force killing...")
             self.detect_process.kill()
@@ -356,6 +360,8 @@ class ObjectDetectProcess:
         self.detection_start.value = 0.0  # type: ignore[attr-defined]
         if (self.detect_process is not None) and self.detect_process.is_alive():
             self.stop()
+
+        self.detector_stop_event.clear()
 
         # Async path for MemryX
         if self.detector_config.type == "memryx":
@@ -379,6 +385,7 @@ class ObjectDetectProcess:
                 self.config,
                 self.detector_config,
                 self.stop_event,
+                self.detector_stop_event,
             )
         self.detect_process.start()
 

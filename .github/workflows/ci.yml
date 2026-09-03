@@ -2,6 +2,11 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      build_extras:
+        description: "Also build hardware-specific extras (Jetson, TensorRT, ROCm, Rockchip, Synaptics)"
+        type: boolean
+        default: false
 
 # only run the latest commit to avoid cache overwrites
 concurrency:
@@ -72,6 +77,7 @@ jobs:
             *.cache-from=type=registry,ref=${{ steps.setup.outputs.cache-name }}-arm64
             *.cache-to=type=registry,ref=${{ steps.setup.outputs.cache-name }}-arm64,mode=max
   jetson_jp6_build:
+    if: ${{ inputs.build_extras }}
     runs-on: ubuntu-22.04-arm
     name: Jetson Jetpack 6
     steps:
@@ -101,6 +107,7 @@ jobs:
             *.cache-from=type=registry,ref=${{ steps.setup.outputs.cache-name }}-jp6
             *.cache-to=type=registry,ref=${{ steps.setup.outputs.cache-name }}-jp6,mode=max
   amd64_extra_builds:
+    if: ${{ inputs.build_extras }}
     runs-on: ubuntu-22.04
     name: AMD64 Extra Build
     needs:
@@ -142,6 +149,7 @@ jobs:
             *.cache-to=type=registry,ref=${{ steps.setup.outputs.cache-name }}-rocm,mode=max
             *.cache-from=type=registry,ref=${{ steps.setup.outputs.cache-name }}-rocm
   arm64_extra_builds:
+    if: ${{ inputs.build_extras }}
     runs-on: ubuntu-22.04-arm
     name: ARM Extra Build
     needs:
@@ -167,6 +175,7 @@ jobs:
             rk.tags=${{ steps.setup.outputs.image-name }}-rk
             *.cache-from=type=gha
   synaptics_build:
+    if: ${{ inputs.build_extras }}
     runs-on: ubuntu-22.04-arm
     name: Synaptics Build
     needs:
